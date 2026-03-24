@@ -23,7 +23,8 @@ const CONFIG = {
   enemies: {
     basic: { hp:1, speed:82,  scoreValue:10, w:32, h:32 },
     fast:  { hp:1, speed:165, scoreValue:15, w:24, h:24 },
-    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44 }
+    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44 },
+    elite: { hp:6, speed:110, scoreValue:50, w:36, h:36 }
   },
 
   drops:  { chance: 0.27 },
@@ -31,11 +32,13 @@ const CONFIG = {
 
   difficulty: {
     spawnInterval:       1.4,
-    minSpawnInterval:    0.22,
+    minSpawnInterval:    0.05,   // floor — ~20 enemies/sec at peak
     spawnDecreasePerSec: 0.007,
-    speedScaleMax:       2.4,
     fastUnlockTime:      10,
-    tankUnlockTime:      26
+    tankUnlockTime:      26,
+    eliteUnlockTime:     45,     // new tough enemy
+    multiSpawnTime:      60,     // start double-spawning
+    tripleSpawnTime:     120     // start triple-spawning
   },
 
   particles: { count: 10 }
@@ -304,16 +307,18 @@ function updateDifficulty(dt) {
     CONFIG.difficulty.minSpawnInterval,
     difficulty.spawnInterval - CONFIG.difficulty.spawnDecreasePerSec * dt
   );
-  difficulty.speedScale = Math.min(
-    CONFIG.difficulty.speedScaleMax,
-    1.0 + difficulty.elapsed * 0.016
-  );
+  // No cap — speed scales forever for infinite high-score runs
+  difficulty.speedScale = 1.0 + difficulty.elapsed * 0.016;
+
   if (difficulty.elapsed >= CONFIG.difficulty.fastUnlockTime
       && !difficulty.unlockedTypes.includes('fast'))
     difficulty.unlockedTypes.push('fast');
   if (difficulty.elapsed >= CONFIG.difficulty.tankUnlockTime
       && !difficulty.unlockedTypes.includes('tank'))
     difficulty.unlockedTypes.push('tank');
+  if (difficulty.elapsed >= CONFIG.difficulty.eliteUnlockTime
+      && !difficulty.unlockedTypes.includes('elite'))
+    difficulty.unlockedTypes.push('elite');
 
   game.spawnTimer -= dt;
   if (game.spawnTimer <= 0) { spawnEnemy(); game.spawnTimer = difficulty.spawnInterval; }
@@ -321,14 +326,22 @@ function updateDifficulty(dt) {
 
 function getEnemyPool() {
   const p = ['basic','basic','basic'];
-  if (difficulty.unlockedTypes.includes('fast')) p.push('fast','fast');
-  if (difficulty.unlockedTypes.includes('tank')) p.push('tank');
+  if (difficulty.unlockedTypes.includes('fast'))  p.push('fast','fast');
+  if (difficulty.unlockedTypes.includes('tank'))  p.push('tank');
+  if (difficulty.unlockedTypes.includes('elite')) p.push('elite');
   return p;
 }
 
 function spawnEnemy() {
+  // Multi-spawn at high elapsed time — keeps pressure growing after spawn floor is hit
+  const t = difficulty.elapsed;
+  let count = 1;
+  if      (t >= CONFIG.difficulty.tripleSpawnTime && Math.random() < 0.35) count = 3;
+  else if (t >= CONFIG.difficulty.multiSpawnTime  && Math.random() < 0.40) count = 2;
+
   const pool = getEnemyPool();
-  game.enemies.push(createEnemy(pool[Math.floor(Math.random() * pool.length)]));
+  for (let i = 0; i < count; i++)
+    game.enemies.push(createEnemy(pool[Math.floor(Math.random() * pool.length)]));
 }
 
 // ─── 10. PHYSICS ─────────────────────────────────────────────
@@ -390,7 +403,7 @@ function checkProjectileEnemyCollisions() {
       if (proj.pierceRemaining > 0) { proj.pierceRemaining--; } else { deadP.add(pi); }
 
       if (e.hp <= 0) {
-        game.score += Math.floor(e.scoreValue * player.scoreMultiplier);
+        game.score += Math.floor(e.scoreValue * player.scoreMultiplier * difficulty.speedScale);
         const col = e.type==='tank' ? '#cc44ff' : e.type==='fast' ? '#ff8800' : '#ff4444';
         game.effects.push(createExplosion(e.x, e.y, col));
         playSound('hit');
@@ -762,7 +775,14 @@ function renderHUD() {
   ctx.shadowBlur   = 4; ctx.shadowColor = '#0044ff';
   ctx.fillText(`${game.score}`, 12, 12);
 
+  // Wave indicator — colour shifts red as difficulty climbs
+  const wave = Math.floor(difficulty.elapsed / 20) + 1;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = wave >= 6 ? '#ff4444' : wave >= 3 ? '#ffaa22' : '#44ffaa';
+  ctx.fillText(`WAVE ${wave}`, canvas.width / 2, 12);
+
   // Timer
+  ctx.fillStyle = '#aaccff';
   const s    = Math.floor(game.time);
   const tStr = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
   ctx.textAlign = 'right';
@@ -813,9 +833,9 @@ function renderTitleOverlay() {
   ctx.fillText('SHOOTER',   cx, cy - 44);
 
   ctx.shadowBlur=0; ctx.fillStyle='#4477aa'; ctx.font='13px Courier New';
-  ctx.fillText('A / D  or  ← →  to move', cx, cy + 24);
-  ctx.fillText('auto-fire  ·  collect upgrades', cx, cy + 46);
-  ctx.fillText('don\'t let them through!', cx, cy + 68);
+  ctx.fillText('WASD / Arrows — move anywhere', cx, cy + 24);
+  ctx.fillText('go up the screen to grab power-ups', cx, cy + 46);
+  ctx.fillText('auto-fire  ·  survive as long as you can!', cx, cy + 68);
 
   if (game.highScore > 0) {
     ctx.fillStyle='#ffcc44'; ctx.font='12px Courier New';
