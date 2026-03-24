@@ -36,17 +36,12 @@
         <button id="lb-close" aria-label="Close">✕</button>
       </div>
 
-      <div id="lb-auth-row">
-        <button id="lb-signin" class="lb-btn">Sign in with Google</button>
-        <div id="lb-user-row" class="hidden">
-          <img id="lb-avatar" src="" alt="">
-          <span id="lb-username"></span>
-          <button id="lb-signout" class="lb-btn small">Sign out</button>
+      <div id="lb-name-row" class="hidden">
+        <div id="lb-name-label">ENTER YOUR NAME</div>
+        <div id="lb-name-input-wrap">
+          <input id="lb-name-input" type="text" maxlength="12" placeholder="AAA" autocomplete="off" autocorrect="off" spellcheck="false">
+          <button id="lb-submit" class="lb-btn accent">SUBMIT</button>
         </div>
-      </div>
-
-      <div id="lb-submit-row" class="hidden">
-        <button id="lb-submit" class="lb-btn accent">Submit My Score</button>
         <span id="lb-submit-status"></span>
       </div>
 
@@ -62,9 +57,8 @@
 
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
-  <script src="game.js?v=3"></script>
+  <script src="game.js?v=5"></script>
 </body>
 </html>

@@ -1559,113 +1559,113 @@ requestAnimationFrame(gameLoop);
 const GAME_VERSION = '1.0';
 
 const LB = (() => {
-  let _db = null, _auth = null, _user = null;
-  let _lastScore = 0, _lastWave = 0, _lastTime = 0;
-  let _submitted = false;
+  let _db = null;
+  let _lastScore = 0, _lastWave = 0, _submitted = false;
 
-  const overlay  = document.getElementById('lb-overlay');
-  const authRow  = document.getElementById('lb-auth-row');
-  const userRow  = document.getElementById('lb-user-row');
-  const signinBtn= document.getElementById('lb-signin');
-  const signoutBtn=document.getElementById('lb-signout');
-  const avatarImg= document.getElementById('lb-avatar');
-  const userNameEl=document.getElementById('lb-username');
-  const submitRow= document.getElementById('lb-submit-row');
-  const submitBtn= document.getElementById('lb-submit');
-  const submitStatus=document.getElementById('lb-submit-status');
-  const closeBtn = document.getElementById('lb-close');
-  const loading  = document.getElementById('lb-loading');
-  const table    = document.getElementById('lb-table');
-  const tbody    = document.getElementById('lb-body');
+  const overlay    = document.getElementById('lb-overlay');
+  const nameRow    = document.getElementById('lb-name-row');
+  const nameInput  = document.getElementById('lb-name-input');
+  const submitBtn  = document.getElementById('lb-submit');
+  const submitStatus = document.getElementById('lb-submit-status');
+  const closeBtn   = document.getElementById('lb-close');
+  const loading    = document.getElementById('lb-loading');
+  const table      = document.getElementById('lb-table');
+  const tbody      = document.getElementById('lb-body');
 
-  // Init Firebase if config is filled in
+  const COL = `scores_v${GAME_VERSION.replace('.','_')}`;
+  const NAME_KEY = 'lb_player_name';
+
   function init() {
     try {
       if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') return;
       firebase.initializeApp(FIREBASE_CONFIG);
-      _db   = firebase.firestore();
-      _auth = firebase.auth();
-      _auth.onAuthStateChanged(user => { _user = user; updateAuthUI(); });
+      _db = firebase.firestore();
     } catch(e) { console.warn('Firebase init skipped:', e.message); }
   }
 
-  function updateAuthUI() {
-    if (!signinBtn) return;
-    if (_user) {
-      signinBtn.closest('#lb-auth-row').querySelector('#lb-signin') && (signinBtn.style.display = 'none');
-      userRow.classList.remove('hidden');
-      avatarImg.src = _user.photoURL || '';
-      userNameEl.textContent = _user.displayName || 'Player';
-      if (!_submitted && _lastScore > 0) submitRow.classList.remove('hidden');
-    } else {
-      signinBtn.style.display = '';
-      userRow.classList.add('hidden');
-      submitRow.classList.add('hidden');
-    }
+  function escHTML(s) {
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   }
 
   async function loadScores() {
-    if (!_db) { loading.textContent = 'Sign in to see global scores'; return; }
+    if (!_db) { loading.textContent = 'Scores unavailable'; return; }
     loading.style.display = 'block';
     table.classList.add('hidden');
     try {
-      const col = `scores_v${GAME_VERSION.replace('.','_')}`;
-      const snap = await _db.collection(col).orderBy('score','desc').limit(10).get();
+      const snap = await _db.collection(COL).orderBy('score','desc').limit(10).get();
       tbody.innerHTML = '';
+      const savedName = (localStorage.getItem(NAME_KEY) || '').toUpperCase();
       snap.docs.forEach((doc, i) => {
         const d = doc.data();
         const tr = document.createElement('tr');
-        if (_user && d.uid === _user.uid) tr.className = 'mine';
-        tr.innerHTML = `
-          <td class="lb-rank">${i+1}</td>
-          <td>${escHTML(d.name || 'Player')}</td>
-          <td class="lb-score-val">${d.score.toLocaleString()}</td>
-          <td class="lb-wave-val">${d.wave}</td>`;
+        if (savedName && (d.name || '').toUpperCase() === savedName && d.score === _lastScore) {
+          tr.className = 'mine';
+        }
+        tr.innerHTML =
+          `<td class="lb-rank">${i+1}</td>` +
+          `<td>${escHTML(d.name || 'ACE')}</td>` +
+          `<td class="lb-score-val">${Number(d.score).toLocaleString()}</td>` +
+          `<td class="lb-wave-val">${d.wave}</td>`;
         tbody.appendChild(tr);
       });
-      if (snap.empty) tbody.innerHTML = '<tr><td colspan="4" style="color:#445566;padding:10px 6px">No scores yet — be the first!</td></tr>';
+      if (snap.empty) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#445566;padding:10px 6px">No scores yet — be the first!</td></tr>';
+      }
       loading.style.display = 'none';
       table.classList.remove('hidden');
     } catch(e) { loading.textContent = 'Could not load scores'; }
   }
 
-  function escHTML(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
   async function submit() {
-    if (!_db || !_user || _submitted) return;
+    if (!_db || _submitted) return;
+    const raw = (nameInput.value || '').trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 12);
+    const name = raw || 'ACE';
     submitBtn.disabled = true;
     submitStatus.textContent = 'Submitting…';
     try {
-      const col = `scores_v${GAME_VERSION.replace('.','_')}`;
-      await _db.collection(col).add({
-        uid: _user.uid, name: _user.displayName || 'Player',
-        score: _lastScore, wave: _lastWave, time: _lastTime,
+      await _db.collection(COL).add({
+        name, score: _lastScore, wave: _lastWave,
         version: GAME_VERSION, ts: Date.now()
       });
+      localStorage.setItem(NAME_KEY, name);
       _submitted = true;
-      submitStatus.textContent = '✓ Score submitted!';
+      submitStatus.textContent = '✓ Score saved!';
       submitBtn.style.display = 'none';
+      nameRow.classList.add('hidden');
       loadScores();
-    } catch(e) { submitStatus.textContent = 'Submit failed — try again'; submitBtn.disabled = false; }
+    } catch(e) {
+      submitStatus.textContent = 'Submit failed — try again';
+      submitBtn.disabled = false;
+    }
   }
 
-  function show() { overlay && overlay.classList.remove('hidden'); loadScores(); }
+  function show() {
+    overlay && overlay.classList.remove('hidden');
+    loadScores();
+  }
   function hide() { overlay && overlay.classList.add('hidden'); }
 
-  // Wire up buttons
-  signinBtn ?.addEventListener('click', () => _auth?.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(()=>{}));
-  signoutBtn?.addEventListener('click', () => _auth?.signOut());
-  submitBtn ?.addEventListener('click', submit);
-  closeBtn  ?.addEventListener('click', hide);
-  overlay   ?.addEventListener('click', e => { if (e.target === overlay) hide(); });
+  // Pre-fill name from last session
+  if (nameInput) {
+    const saved = localStorage.getItem(NAME_KEY);
+    if (saved) nameInput.value = saved;
+    nameInput.addEventListener('input', () => {
+      nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
+    });
+    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  }
+
+  submitBtn?.addEventListener('click', submit);
+  closeBtn ?.addEventListener('click', hide);
+  overlay  ?.addEventListener('click', e => { if (e.target === overlay) hide(); });
 
   return {
     init,
-    onGameOver(score, wave, time) {
-      _lastScore = score; _lastWave = wave; _lastTime = time; _submitted = false;
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.display = ''; }
+    onGameOver(score, wave) {
+      _lastScore = score; _lastWave = wave; _submitted = false;
+      if (submitBtn)  { submitBtn.disabled = false; submitBtn.style.display = ''; }
       if (submitStatus) submitStatus.textContent = '';
-      updateAuthUI();
+      if (nameRow)    nameRow.classList.remove('hidden');
       show();
     }
   };

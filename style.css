@@ -127,18 +127,39 @@ body {
 }
 #lb-close:hover { color: #aaccff; }
 
-#lb-auth-row { margin-bottom: 12px; }
-
-#lb-user-row {
-  display: flex; align-items: center; gap: 8px;
+#lb-name-row {
+  margin-bottom: 14px;
 }
-#lb-user-row.hidden { display: none; }
-#lb-avatar {
-  width: 28px; height: 28px;
-  border-radius: 50%;
+#lb-name-row.hidden { display: none; }
+#lb-name-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #446688;
+  margin-bottom: 7px;
+}
+#lb-name-input-wrap {
+  display: flex; gap: 8px; align-items: center;
+}
+#lb-name-input {
+  flex: 1;
+  background: rgba(0,10,30,0.8);
   border: 1px solid rgba(0,140,255,0.4);
+  border-radius: 6px;
+  color: #22ccff;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 0.2em;
+  padding: 7px 10px;
+  text-transform: uppercase;
+  outline: none;
+  caret-color: #22ccff;
 }
-#lb-username { font-size: 13px; color: #aaccff; flex: 1; }
+#lb-name-input:focus {
+  border-color: rgba(0,200,255,0.7);
+  box-shadow: 0 0 8px rgba(0,180,255,0.2);
+}
+#lb-name-input::placeholder { color: #223344; }
 
 .lb-btn {
   background: rgba(0,40,90,0.7);
