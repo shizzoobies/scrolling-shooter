@@ -1578,8 +1578,8 @@ const LB = (() => {
   function init() {
     try {
       if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') return;
-      firebase.initializeApp(FIREBASE_CONFIG);
-      _db = firebase.firestore();
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      _db = app.firestore();
     } catch(e) { console.warn('Firebase init skipped:', e.message); }
   }
 
