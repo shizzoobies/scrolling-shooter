@@ -21,11 +21,14 @@ const CONFIG = {
   projectile: { width: 6, height: 18 },
 
   enemies: {
-    basic: { hp:1, speed:82,  scoreValue:10, w:32, h:32 },
-    fast:  { hp:1, speed:165, scoreValue:15, w:24, h:24 },
-    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44 },
-    elite: { hp:6, speed:110, scoreValue:50, w:36, h:36 }
+    basic: { hp:1, speed:82,  scoreValue:10, w:32, h:32, shotCooldown:3.5 },
+    fast:  { hp:1, speed:165, scoreValue:15, w:24, h:24, shotCooldown:5.0 },
+    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44, shotCooldown:2.0 },
+    elite: { hp:6, speed:110, scoreValue:50, w:36, h:36, shotCooldown:1.5 }
   },
+
+  enemyProjectile: { speed: 210, w: 5, h: 12 },
+  powerups: { spreadDuration: 10, explosiveDuration: 8, explosiveRadius: 80 },
 
   drops:  { chance: 0.27 },
   pickup: { width:20, height:20, speed:56 },
@@ -37,6 +40,7 @@ const CONFIG = {
     fastUnlockTime:      10,
     tankUnlockTime:      26,
     eliteUnlockTime:     45,     // new tough enemy
+    enemyShotUnlockTime: 18,     // enemies start shooting at 18s
     multiSpawnTime:      60,     // start double-spawning
     tripleSpawnTime:     120     // start triple-spawning
   },
@@ -57,9 +61,10 @@ const game = {
   highScore:  parseInt(localStorage.getItem('dls_hi') || '0'),
   time:       0,
   lastTime:   0,
-  enemies:    [],
-  projectiles:[],
-  pickups:    [],
+  enemies:          [],
+  projectiles:      [],
+  enemyProjectiles: [],
+  pickups:          [],
   effects:    [],
   spawnTimer: 0
 };
@@ -73,6 +78,8 @@ const player = {
   canDoubleShot:   false,
   canSpread:       false,
   canPierce:       false,
+  spreadTimer:     0,
+  explosiveTimer:  0,
   shield:          0,
   scoreMultiplier: 1,
   fireTimer:       0,
@@ -183,7 +190,13 @@ function createEnemy(type) {
     speed:      def.speed * difficulty.speedScale,
     hp:         def.hp, maxHp: def.hp,
     scoreValue: def.scoreValue,
-    flashTimer: 0, dead: false
+    flashTimer: 0, dead: false,
+    // Size shrinks as difficulty grows (min 45% of base size)
+    w: def.w * Math.max(0.45, 1.0 - difficulty.elapsed * 0.003),
+    h: def.h * Math.max(0.45, 1.0 - difficulty.elapsed * 0.003),
+    // Staggered fire timers so enemies don't all shoot at once
+    fireTimer:    Math.random() * def.shotCooldown,
+    shotCooldown: def.shotCooldown
   };
 }
 
@@ -200,18 +213,19 @@ function createProjectile(x, offsetX = 0, damage = player.damage) {
 }
 
 const UPGRADE_DEFS = {
-  fireRate:   { label: 'RAPID',  maxStacks: 5, color: '#00cfff' },
-  damage:     { label: 'POWER',  maxStacks: 5, color: '#ff5555' },
-  spread:     { label: 'SPREAD', maxStacks: 1, color: '#ffaa00' },
-  doubleShot: { label: 'DUAL',   maxStacks: 1, color: '#ffe100' },
-  pierce:     { label: 'PIERCE', maxStacks: 1, color: '#ff88ff' },
-  shield:     { label: 'SHIELD', maxStacks: 3, color: '#44ff99' }
+  fireRate:   { label: 'RAPID',  maxStacks: 5,  color: '#00cfff', timed: false },
+  damage:     { label: 'POWER',  maxStacks: 5,  color: '#ff5555', timed: false },
+  spread:     { label: 'SPREAD', maxStacks: 99, color: '#ffaa00', timed: true  },
+  doubleShot: { label: 'DUAL',   maxStacks: 1,  color: '#ffe100', timed: false },
+  pierce:     { label: 'PIERCE', maxStacks: 1,  color: '#ff88ff', timed: false },
+  shield:     { label: 'SHIELD', maxStacks: 3,  color: '#44ff99', timed: false },
+  explosive:  { label: 'BLAST',  maxStacks: 99, color: '#ff6600', timed: true  }
 };
 const UPGRADE_KEYS = Object.keys(UPGRADE_DEFS);
 
 function createPickup(x, y) {
   const available = UPGRADE_KEYS.filter(k =>
-    (player.upgrades[k] || 0) < UPGRADE_DEFS[k].maxStacks
+    UPGRADE_DEFS[k].timed || (player.upgrades[k] || 0) < UPGRADE_DEFS[k].maxStacks
   );
   if (!available.length) return null;
   const type = available[Math.floor(Math.random() * available.length)];
@@ -274,10 +288,12 @@ function updatePlayer(dt) {
     player.fireTimer = 1 / player.fireRate;
     fire();
   }
+  if (player.spreadTimer   > 0) player.spreadTimer   = Math.max(0, player.spreadTimer   - dt);
+  if (player.explosiveTimer > 0) player.explosiveTimer = Math.max(0, player.explosiveTimer - dt);
 }
 
 function fire() {
-  if (player.canSpread) {
+  if (player.spreadTimer > 0) {
     // 5-bullet fan spread
     const angles = [-30, -15, 0, 15, 30];
     for (const deg of angles) {
@@ -357,9 +373,44 @@ function updateProjectiles(dt) {
 }
 
 function updateEnemies(dt) {
+  const canShoot = difficulty.elapsed >= CONFIG.difficulty.enemyShotUnlockTime;
   for (const e of game.enemies) {
     e.y += e.speed * dt;
     if (e.flashTimer > 0) e.flashTimer -= dt;
+    if (canShoot) {
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        e.fireTimer = e.shotCooldown * (0.8 + Math.random() * 0.4); // slight jitter
+        game.enemyProjectiles.push(createEnemyProjectile(e));
+      }
+    }
+  }
+}
+
+function createEnemyProjectile(enemy) {
+  const spd = CONFIG.enemyProjectile.speed * (0.9 + difficulty.speedScale * 0.15);
+  let vx = 0, vy = spd;
+  // Tank and elite aim toward player; basic/fast shoot straight down
+  if (enemy.type === 'tank' || enemy.type === 'elite') {
+    const dx = player.x - enemy.x, dy = player.y - enemy.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    vx = (dx / dist) * spd;
+    vy = (dy / dist) * spd;
+  }
+  const colors = { basic:'#ff3333', fast:'#ff7700', tank:'#ff8800', elite:'#ff00ee' };
+  return {
+    x: enemy.x, y: enemy.y + enemy.h * 0.5,
+    vx, vy,
+    w: CONFIG.enemyProjectile.w,
+    h: CONFIG.enemyProjectile.h,
+    color: colors[enemy.type] || '#ff3333'
+  };
+}
+
+function updateEnemyProjectiles(dt) {
+  for (const p of game.enemyProjectiles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
   }
 }
 
@@ -404,12 +455,32 @@ function checkProjectileEnemyCollisions() {
 
       if (e.hp <= 0) {
         game.score += Math.floor(e.scoreValue * player.scoreMultiplier * difficulty.speedScale);
-        const col = e.type==='tank' ? '#cc44ff' : e.type==='fast' ? '#ff8800' : '#ff4444';
+        const col = e.type==='tank' ? '#cc44ff' : e.type==='fast' ? '#ff8800' : e.type==='elite' ? '#ff00ee' : '#ff4444';
         game.effects.push(createExplosion(e.x, e.y, col));
         playSound('hit');
         if (Math.random() < CONFIG.drops.chance) {
           const pk = createPickup(e.x, e.y);
-          if (pk) { game.pickups = [pk]; } // only one pickup on screen at a time
+          if (pk) { game.pickups = [pk]; }
+        }
+        // EXPLOSIVE power-up — AOE shockwave
+        if (player.explosiveTimer > 0) {
+          const R = CONFIG.powerups.explosiveRadius;
+          for (let j = 0; j < game.enemies.length; j++) {
+            if (deadE.has(j)) continue;
+            const oe = game.enemies[j];
+            const dx = oe.x - e.x, dy = oe.y - e.y;
+            if (dx*dx + dy*dy < R*R) {
+              oe.hp -= player.damage;
+              oe.flashTimer = 0.15;
+              if (oe.hp <= 0) {
+                game.score += Math.floor(oe.scoreValue * player.scoreMultiplier * difficulty.speedScale);
+                game.effects.push(createExplosion(oe.x, oe.y, '#ff8800'));
+                deadE.add(j);
+              }
+            }
+          }
+          // Expanding ring visual
+          game.effects.push({ type:'aoeRing', x:e.x, y:e.y, timer:0, duration:0.35, radius:R });
         }
         deadE.add(ei);
       }
@@ -452,15 +523,42 @@ function checkLoseCondition() {
   game.enemies = game.enemies.filter(e => !e.dead);
 }
 
+function checkEnemyProjectilePlayer() {
+  if (game.state !== 'playing') return;
+  const px = player.x, py = player.y;
+  const pw = CONFIG.player.width, ph = CONFIG.player.height;
+  const out = [];
+  for (const p of game.enemyProjectiles) {
+    if (game.state !== 'playing') { out.push(p); continue; }
+    if (rectsOverlap(p.x, p.y, p.w, p.h, px, py, pw, ph)) {
+      if (player.shield > 0) {
+        player.shield--;
+        player.upgrades.shield = Math.max(0, (player.upgrades.shield || 1) - 1);
+        game.effects.push(createExplosion(px, py, '#44ff99'));
+        playSound('shield');
+      } else {
+        triggerGameOver();
+      }
+    } else {
+      out.push(p);
+    }
+  }
+  game.enemyProjectiles = out;
+}
+
 function cleanupEntities() {
   game.projectiles = game.projectiles.filter(p =>
     p.y + p.h/2 > 0 && p.x > -p.w && p.x < canvas.width + p.w
   );
-  game.enemies     = game.enemies.filter(e => e.y - e.h/2 < canvas.height + 20);
+  game.enemies          = game.enemies.filter(e => e.y - e.h/2 < canvas.height + 20);
+  game.enemyProjectiles = game.enemyProjectiles.filter(p =>
+    p.y < canvas.height + 20 && p.y > -20 && p.x > -20 && p.x < canvas.width + 20
+  );
   game.pickups     = game.pickups.filter(p => p.y - p.h/2 < canvas.height);
   game.effects     = game.effects.filter(ef => {
     if (ef.type === 'explosion') return ef.timer < ef.duration || ef.particles.length > 0;
     if (ef.type === 'hit')       return ef.timer < ef.duration;
+    if (ef.type === 'aoeRing')   return ef.timer < ef.duration;
     return true;
   });
 }
@@ -472,10 +570,11 @@ function applyUpgrade(type) {
   switch (type) {
     case 'fireRate':   player.fireRate      = CONFIG.player.fireRate + s * 1.0; break;
     case 'damage':     player.damage        = CONFIG.player.damage   + s;       break;
-    case 'spread':     player.canSpread      = true;                             break;
-    case 'doubleShot': player.canDoubleShot = true;                             break;
-    case 'pierce':     player.canPierce     = true;                             break;
-    case 'shield':     player.shield        = Math.min(3, player.shield + 1);   break;
+    case 'spread':     player.spreadTimer    += CONFIG.powerups.spreadDuration;   break;
+    case 'doubleShot': player.canDoubleShot  = true;                              break;
+    case 'pierce':     player.canPierce      = true;                              break;
+    case 'shield':     player.shield         = Math.min(3, player.shield + 1);    break;
+    case 'explosive':  player.explosiveTimer += CONFIG.powerups.explosiveDuration; break;
   }
 }
 
@@ -748,6 +847,18 @@ function renderEffects() {
         ctx.restore();
       }
     }
+    if (ef.type === 'aoeRing') {
+      const t = ef.timer / ef.duration;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, (1 - t) * 0.75);
+      ctx.strokeStyle = '#ff8800';
+      ctx.lineWidth   = 3 - t * 2;
+      ctx.shadowBlur  = 18; ctx.shadowColor = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(ef.x, ef.y, ef.radius * t, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (ef.type === 'hit') {
       const size = 10 + t * 12;
       ctx.save();
@@ -761,6 +872,25 @@ function renderEffects() {
       ctx.stroke();
       ctx.restore();
     }
+  }
+}
+
+function renderEnemyProjectiles() {
+  for (const p of game.enemyProjectiles) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    // Angle the projectile in its direction of travel
+    const angle = Math.atan2(p.vy, p.vx) - Math.PI / 2;
+    ctx.rotate(angle);
+    ctx.shadowBlur  = 8;
+    ctx.shadowColor = p.color;
+    ctx.fillStyle   = p.color;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    // Hot core
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-p.w / 4, -p.h / 2, p.w / 2, p.h * 0.4);
+    ctx.restore();
   }
 }
 
@@ -791,13 +921,20 @@ function renderHUD() {
   ctx.shadowBlur = 0;
 
   // Active upgrade pills along the bottom
-  const active = UPGRADE_KEYS.filter(k => player.upgrades[k] > 0);
+  const active = UPGRADE_KEYS.filter(k => {
+    if (k === 'spread')    return player.spreadTimer > 0;
+    if (k === 'explosive') return player.explosiveTimer > 0;
+    return (player.upgrades[k] || 0) > 0;
+  });
   if (active.length) {
     let ux = 10; const uy = canvas.height - 44;
     ctx.font = 'bold 9px Courier New'; ctx.textBaseline = 'top';
     for (const key of active) {
       const def = UPGRADE_DEFS[key], stk = player.upgrades[key];
-      const lbl = stk > 1 ? `${def.label}×${stk}` : def.label;
+      let lbl;
+      if (key === 'spread')    lbl = `SPREAD ${Math.ceil(player.spreadTimer)}s`;
+      else if (key === 'explosive') lbl = `BLAST ${Math.ceil(player.explosiveTimer)}s`;
+      else lbl = stk > 1 ? `${def.label}×${stk}` : def.label;
       const lw  = ctx.measureText(lbl).width + 8;
 
       // Pill background
@@ -889,16 +1026,17 @@ function renderPauseOverlay() {
 // ─── 22. GAME LIFECYCLE ──────────────────────────────────────
 function startGame() {
   game.state='playing'; game.score=0; game.time=0; game.lastTime=0;
-  game.enemies=[]; game.projectiles=[]; game.pickups=[]; game.effects=[]; game.spawnTimer=0.6;
+  game.enemies=[]; game.projectiles=[]; game.enemyProjectiles=[]; game.pickups=[]; game.effects=[]; game.spawnTimer=0.6;
 
   player.x            = canvas.width / 2;
   player.y            = CONFIG.player.y;
   player.fireRate      = CONFIG.player.fireRate;
   player.damage        = CONFIG.player.damage;
   player.projectileSpeed = CONFIG.player.projectileSpeed;
-  player.canDoubleShot = false; player.canSpread = false; player.canPierce = false;
-  player.shield        = 0; player.scoreMultiplier = 1;
-  player.fireTimer     = 0; player.upgrades = {};
+  player.canDoubleShot  = false; player.canSpread = false; player.canPierce = false;
+  player.spreadTimer    = 0; player.explosiveTimer = 0;
+  player.shield         = 0; player.scoreMultiplier = 1;
+  player.fireTimer      = 0; player.upgrades = {};
 
   difficulty.elapsed       = 0;
   difficulty.spawnInterval = CONFIG.difficulty.spawnInterval;
@@ -910,7 +1048,7 @@ function triggerGameOver() {
   if (game.state !== 'playing') return;
   game.state = 'gameOver'; playSound('lose');
   for (const e of game.enemies) game.effects.push(createExplosion(e.x, e.y, '#ff3333'));
-  game.enemies=[]; game.projectiles=[];
+  game.enemies=[]; game.projectiles=[]; game.enemyProjectiles=[];
   if (game.score > game.highScore) {
     game.highScore = game.score; localStorage.setItem('dls_hi', game.highScore);
   }
@@ -921,8 +1059,8 @@ function update(dt) {
   updateStars(dt);
   if (game.state === 'playing') {
     updateInput(dt); updatePlayer(dt); updateDifficulty(dt);
-    updateProjectiles(dt); updateEnemies(dt); updatePickups(dt); updateEffects(dt);
-    checkProjectileEnemyCollisions(); checkPickupCollisions(); checkLoseCondition();
+    updateProjectiles(dt); updateEnemies(dt); updateEnemyProjectiles(dt); updatePickups(dt); updateEffects(dt);
+    checkProjectileEnemyCollisions(); checkPickupCollisions(); checkLoseCondition(); checkEnemyProjectilePlayer();
     cleanupEntities();
   } else if (game.state === 'gameOver') {
     updateEffects(dt);
@@ -936,6 +1074,7 @@ function render() {
   renderDangerZone();
   renderPlayer();
   renderProjectiles();
+  renderEnemyProjectiles();
   renderEnemies();
   renderPickups();
   renderEffects();
