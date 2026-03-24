@@ -21,28 +21,28 @@ const CONFIG = {
   projectile: { width: 6, height: 18 },
 
   enemies: {
-    basic: { hp:1, speed:82,  scoreValue:10, w:32, h:32, shotCooldown:3.5 },
-    fast:  { hp:1, speed:165, scoreValue:15, w:24, h:24, shotCooldown:5.0 },
-    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44, shotCooldown:2.0 },
-    elite: { hp:6, speed:110, scoreValue:50, w:36, h:36, shotCooldown:1.5 }
+    basic: { hp:1, speed:82,  scoreValue:10, w:32, h:32, shotCooldown:4.5 },  // was 3.5
+    fast:  { hp:1, speed:165, scoreValue:15, w:24, h:24, shotCooldown:7.0 },  // was 5.0 — fast is a movement threat, not a bullet threat
+    tank:  { hp:4, speed:48,  scoreValue:30, w:44, h:44, shotCooldown:2.6 },  // was 2.0
+    elite: { hp:6, speed:110, scoreValue:50, w:36, h:36, shotCooldown:2.0 }   // was 1.5
   },
 
-  enemyProjectile: { speed: 210, w: 5, h: 12 },
+  enemyProjectile: { speed: 185, w: 5, h: 12 },  // was 210 — slightly more dodgeable
   powerups: { spreadDuration: 10, explosiveDuration: 8, explosiveRadius: 80 },
 
-  drops:  { chance: 0.27 },
+  drops:  { chance: 0.33 },  // was 0.27 — more power-ups to survive bullet phase
   pickup: { width:20, height:20, speed:56 },
 
   difficulty: {
     spawnInterval:       1.4,
-    minSpawnInterval:    0.05,   // floor — ~20 enemies/sec at peak
-    spawnDecreasePerSec: 0.007,
-    fastUnlockTime:      10,
-    tankUnlockTime:      26,
-    eliteUnlockTime:     45,     // new tough enemy
-    enemyShotUnlockTime: 18,     // enemies start shooting at 18s
-    multiSpawnTime:      60,     // start double-spawning
-    tripleSpawnTime:     120     // start triple-spawning
+    minSpawnInterval:    0.06,   // was 0.05
+    spawnDecreasePerSec: 0.006,  // was 0.007 — slightly gentler ramp
+    fastUnlockTime:      12,
+    tankUnlockTime:      28,
+    eliteUnlockTime:     50,
+    enemyShotUnlockTime: 25,     // was 18 — give player time to grab power-ups first
+    multiSpawnTime:      85,     // was 60 — after boss, not simultaneous with it
+    tripleSpawnTime:     160     // was 120
   },
 
   particles: { count: 10 }
@@ -400,7 +400,8 @@ function updateDifficulty(dt) {
     difficulty.spawnInterval - CONFIG.difficulty.spawnDecreasePerSec * dt
   );
   // No cap — speed scales forever for infinite high-score runs
-  difficulty.speedScale = 1.0 + difficulty.elapsed * 0.016;
+  // 0.013 gives a gentler early curve: 1.8× at 60s, 2.6× at 120s, 4.3× at 250s
+  difficulty.speedScale = 1.0 + difficulty.elapsed * 0.013;
 
   if (difficulty.elapsed >= CONFIG.difficulty.fastUnlockTime
       && !difficulty.unlockedTypes.includes('fast'))
