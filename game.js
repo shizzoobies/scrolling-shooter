@@ -65,8 +65,12 @@ const game = {
   projectiles:      [],
   enemyProjectiles: [],
   pickups:          [],
-  effects:    [],
-  spawnTimer: 0
+  effects:          [],
+  spawnTimer:       0,
+  boss:             null,
+  bossWarning:      null,
+  bossPhaseLabel:   null,
+  nextBossTier:     0
 };
 
 const player = {
@@ -176,6 +180,39 @@ function playSound(type) {
   } catch (_) {}
 }
 
+// ─── 5b. MUSIC ───────────────────────────────────────────────
+const MUSIC = (() => {
+  const files  = ['Early Audio.mp3', 'Midway Audio.mp3', 'Final_Boss_Fury_2026-03-24T141755.mp3'];
+  const names  = ['early', 'mid', 'boss'];
+  const tracks = {};
+  names.forEach((n, i) => {
+    const a = new Audio(`Audio/${files[i]}`);
+    a.loop = true; a.volume = 0.55;
+    tracks[n] = a;
+  });
+  let _current = null;
+  return {
+    play(name) {
+      if (_current === name) return;
+      if (_current) { tracks[_current].pause(); tracks[_current].currentTime = 0; }
+      _current = name;
+      tracks[name].play().catch(() => {});
+    },
+    stop() {
+      if (_current) { tracks[_current].pause(); tracks[_current].currentTime = 0; }
+      _current = null;
+    },
+    get current() { return _current; }
+  };
+})();
+
+function updateMusicTrack() {
+  if (game.state !== 'playing') return;
+  if (game.boss || difficulty.elapsed >= 120) MUSIC.play('boss');
+  else if (difficulty.elapsed >= 60)          MUSIC.play('mid');
+  else                                         MUSIC.play('early');
+}
+
 // ─── 6. ENTITY FACTORIES ─────────────────────────────────────
 let _eid = 0;
 
@@ -211,6 +248,45 @@ function createProjectile(x, offsetX = 0, damage = player.damage) {
     h: CONFIG.projectile.height
   };
 }
+
+// ─── BOSS DEFINITIONS ────────────────────────────────────────
+const BOSS_DEFS = [
+  {
+    tier: 1, name: 'SENTINEL',
+    spawnAt: 60, targetY: 115,
+    hp: 40, w: 88, h: 68,
+    speed: 55, color: '#ff5533', glowColor: '#ff2200',
+    scoreValue: 600,
+    phases: [
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spread3',       fireRate: 0.75 },
+      { label: '— RAGE —',     hpFraction: 0.5,  pattern: 'spread5',       fireRate: 1.5,  rage: true }
+    ]
+  },
+  {
+    tier: 2, name: 'DECIMATOR',
+    spawnAt: 135, targetY: 125,
+    hp: 90, w: 108, h: 88,
+    speed: 72, color: '#cc44ff', glowColor: '#aa00ff',
+    scoreValue: 1800,
+    phases: [
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'aimed+spread3', fireRate: 0.9  },
+      { label: '— PHASE 2 —',  hpFraction: 0.6,  pattern: 'ring8',         fireRate: 1.35 },
+      { label: '— RAGE —',     hpFraction: 0.3,  pattern: 'ring8+aimed',   fireRate: 2.1,  rage: true }
+    ]
+  },
+  {
+    tier: 3, name: 'ANNIHILATOR',
+    spawnAt: 225, targetY: 135,
+    hp: 180, w: 130, h: 108,
+    speed: 95, color: '#ff0077', glowColor: '#ff0044',
+    scoreValue: 5000,
+    phases: [
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spiral',        fireRate: 1.8  },
+      { label: '— PHASE 2 —',  hpFraction: 0.66, pattern: 'spiral+aimed',  fireRate: 2.5  },
+      { label: '— RAGE —',     hpFraction: 0.33, pattern: 'all',           fireRate: 3.5,  rage: true }
+    ]
+  }
+];
 
 const UPGRADE_DEFS = {
   fireRate:   { label: 'RAPID',  maxStacks: 5,  color: '#00cfff', timed: false },
@@ -336,6 +412,20 @@ function updateDifficulty(dt) {
       && !difficulty.unlockedTypes.includes('elite'))
     difficulty.unlockedTypes.push('elite');
 
+  // Boss warning + spawn
+  if (!game.boss && !game.bossWarning && game.nextBossTier < BOSS_DEFS.length) {
+    if (difficulty.elapsed >= BOSS_DEFS[game.nextBossTier].spawnAt) {
+      game.bossWarning = { tier: game.nextBossTier, timer: 3.0 };
+    }
+  }
+  if (game.bossWarning) {
+    game.bossWarning.timer -= dt;
+    if (game.bossWarning.timer <= 0) {
+      spawnBoss(game.bossWarning.tier);
+      game.bossWarning = null;
+    }
+  }
+
   game.spawnTimer -= dt;
   if (game.spawnTimer <= 0) { spawnEnemy(); game.spawnTimer = difficulty.spawnInterval; }
 }
@@ -432,6 +522,156 @@ function updateEffects(dt) {
   }
 }
 
+// ─── 10b. BOSS ────────────────────────────────────────────────
+function spawnBoss(tier) {
+  const def = BOSS_DEFS[tier];
+  game.boss = {
+    x: canvas.width / 2, y: -def.h * 0.5,
+    vx: def.speed,
+    state: 'entering',
+    targetY: def.targetY,
+    hp: def.hp, maxHp: def.hp,
+    def, phase: 0,
+    fireTimer: 1.8,
+    flashTimer: 0,
+    spiralAngle: 0
+  };
+  MUSIC.play('boss');
+}
+
+function updateBoss(dt) {
+  const boss = game.boss;
+  if (!boss) return;
+  boss.flashTimer = Math.max(0, boss.flashTimer - dt);
+
+  if (boss.state === 'entering') {
+    boss.y += 130 * dt;
+    if (boss.y >= boss.targetY) { boss.y = boss.targetY; boss.state = 'active'; }
+    return;
+  }
+
+  // Horizontal bounce
+  boss.x += boss.vx * dt;
+  const margin = boss.def.w * 0.5 + 8;
+  if (boss.x > canvas.width - margin)  { boss.x = canvas.width - margin;  boss.vx = -Math.abs(boss.vx); }
+  if (boss.x < margin)                 { boss.x = margin;                  boss.vx =  Math.abs(boss.vx); }
+
+  // Fire
+  boss.fireTimer -= dt;
+  if (boss.fireTimer <= 0) {
+    const ph = boss.def.phases[boss.phase];
+    boss.fireTimer = 1 / ph.fireRate;
+    fireBossPattern(boss, ph.pattern);
+    playSound('shoot');
+  }
+
+  // Phase transitions
+  const hpPct = boss.hp / boss.maxHp;
+  const nextPhaseIdx = boss.phase + 1;
+  if (nextPhaseIdx < boss.def.phases.length) {
+    const ph = boss.def.phases[nextPhaseIdx];
+    if (hpPct <= ph.hpFraction) {
+      boss.phase = nextPhaseIdx;
+      boss.flashTimer = 0.55;
+      boss.fireTimer  = 0.3;
+      game.effects.push(createExplosion(boss.x, boss.y, boss.def.color));
+      game.bossPhaseLabel = { text: ph.label, timer: 2.2 };
+    }
+  }
+
+  // Boss body → player collision
+  if (rectsOverlap(boss.x, boss.y, boss.def.w * 0.7, boss.def.h * 0.7,
+                   player.x, player.y, CONFIG.player.width, CONFIG.player.height)) {
+    if (player.shield > 0) {
+      player.shield--;
+      player.upgrades.shield = Math.max(0, (player.upgrades.shield || 1) - 1);
+      game.effects.push(createExplosion(player.x, player.y, '#44ff99'));
+      playSound('shield');
+    } else { triggerGameOver(); }
+  }
+}
+
+// Boss projectile fire patterns
+function fireBossPattern(boss, pattern) {
+  const spd = 175 + difficulty.speedScale * 14;
+  switch (pattern) {
+    case 'spread3':        fireBossSpread(boss, 3, 44, spd);  break;
+    case 'spread5':        fireBossSpread(boss, 5, 72, spd);  break;
+    case 'aimed':          fireBossAimed (boss, spd);          break;
+    case 'aimed+spread3':  fireBossSpread(boss, 3, 44, spd);  fireBossAimed(boss, spd * 1.1); break;
+    case 'ring8':          fireBossRing  (boss, 8, spd * 0.8); break;
+    case 'ring8+aimed':    fireBossRing  (boss, 8, spd * 0.8); fireBossAimed(boss, spd * 1.2); break;
+    case 'spiral':
+      boss.spiralAngle += 0.55;
+      fireBossSpiral(boss, boss.spiralAngle, spd * 0.85); break;
+    case 'spiral+aimed':
+      boss.spiralAngle += 0.55;
+      fireBossSpiral(boss, boss.spiralAngle, spd * 0.85); fireBossAimed(boss, spd); break;
+    case 'all':
+      fireBossSpread(boss, 5, 80, spd); fireBossRing(boss, 6, spd * 0.75); fireBossAimed(boss, spd * 1.3); break;
+  }
+}
+function fireBossSpread(boss, count, totalDeg, spd) {
+  for (let i = 0; i < count; i++) {
+    const t   = count === 1 ? 0 : i / (count - 1);
+    const rad = (-totalDeg / 2 + t * totalDeg) * Math.PI / 180;
+    game.enemyProjectiles.push({
+      x: boss.x, y: boss.y + boss.def.h * 0.38,
+      vx: Math.sin(rad) * spd, vy: Math.cos(rad) * spd,
+      w: 9, h: 9, color: boss.def.color
+    });
+  }
+}
+function fireBossAimed(boss, spd) {
+  const dx = player.x - boss.x, dy = player.y - boss.y;
+  const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+  game.enemyProjectiles.push({
+    x: boss.x, y: boss.y + boss.def.h * 0.38,
+    vx: (dx / d) * spd, vy: (dy / d) * spd,
+    w: 11, h: 11, color: boss.def.color
+  });
+}
+function fireBossRing(boss, count, spd) {
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2;
+    game.enemyProjectiles.push({
+      x: boss.x, y: boss.y,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      w: 8, h: 8, color: boss.def.color
+    });
+  }
+}
+function fireBossSpiral(boss, angle, spd) {
+  for (let i = 0; i < 2; i++) {
+    const a = angle + i * Math.PI;
+    game.enemyProjectiles.push({
+      x: boss.x, y: boss.y,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      w: 7, h: 7, color: boss.def.color
+    });
+  }
+}
+function killBoss(boss) {
+  // Score + big multi-explosion
+  game.score += Math.floor(boss.def.scoreValue * player.scoreMultiplier * difficulty.speedScale);
+  for (let i = 0; i < 6; i++) {
+    const ox = (Math.random() - 0.5) * boss.def.w;
+    const oy = (Math.random() - 0.5) * boss.def.h;
+    game.effects.push(createExplosion(boss.x + ox, boss.y + oy, boss.def.color));
+  }
+  game.effects.push(createExplosion(boss.x, boss.y, '#ffffff'));
+  playSound('hit');
+  // Drop 3 pickups
+  for (let i = 0; i < 3; i++) {
+    const pk = createPickup(boss.x + (Math.random() - 0.5) * 60, boss.y + 20 + i * 20);
+    if (pk) game.pickups.push(pk);
+  }
+  game.nextBossTier++;
+  game.boss = null;
+  game.bossPhaseLabel = null;
+  updateMusicTrack();
+}
+
 // ─── 11. COLLISION ───────────────────────────────────────────
 function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return Math.abs(ax-bx) < (aw+bw)/2 && Math.abs(ay-by) < (ah+bh)/2;
@@ -521,6 +761,22 @@ function checkLoseCondition() {
     }
   }
   game.enemies = game.enemies.filter(e => !e.dead);
+}
+
+function checkProjectileBossCollisions() {
+  if (!game.boss || game.boss.state !== 'active') return;
+  const boss = game.boss;
+  const deadP = new Set();
+  for (let pi = 0; pi < game.projectiles.length; pi++) {
+    const proj = game.projectiles[pi];
+    if (!rectsOverlap(proj.x, proj.y, proj.w, proj.h, boss.x, boss.y, boss.def.w * 0.88, boss.def.h * 0.82)) continue;
+    boss.hp -= proj.damage;
+    boss.flashTimer = 0.08;
+    game.effects.push(createHitFX(proj.x, proj.y));
+    if (proj.pierceRemaining > 0) { proj.pierceRemaining--; } else { deadP.add(pi); }
+    if (boss.hp <= 0) { killBoss(boss); break; }
+  }
+  game.projectiles = game.projectiles.filter((_, i) => !deadP.has(i));
 }
 
 function checkEnemyProjectilePlayer() {
@@ -875,6 +1131,147 @@ function renderEffects() {
   }
 }
 
+function renderBoss() {
+  const boss = game.boss;
+  if (!boss) return;
+  const { x, y, def, flashTimer } = boss;
+  const flash = flashTimer > 0;
+  const w = def.w, h = def.h;
+  const t = Date.now() / 1000;
+  const pulse = 0.7 + 0.3 * Math.sin(t * 6);
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.shadowBlur  = flash ? 50 : 28;
+  ctx.shadowColor = flash ? '#ffffff' : def.glowColor;
+
+  // Main hull
+  ctx.fillStyle = flash ? '#ffffff' : def.color;
+  ctx.beginPath();
+  ctx.moveTo(0,        -h * 0.50);
+  ctx.lineTo( w * 0.38, -h * 0.18);
+  ctx.lineTo( w * 0.50,  h * 0.18);
+  ctx.lineTo( w * 0.28,  h * 0.50);
+  ctx.lineTo(-w * 0.28,  h * 0.50);
+  ctx.lineTo(-w * 0.50,  h * 0.18);
+  ctx.lineTo(-w * 0.38, -h * 0.18);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wing panels (darker)
+  if (!flash) {
+    ctx.fillStyle = def.glowColor + 'aa';
+    ctx.beginPath();
+    ctx.moveTo(-w*0.10, -h*0.10); ctx.lineTo(-w*0.48,  h*0.15);
+    ctx.lineTo(-w*0.32,  h*0.45); ctx.lineTo(-w*0.08,  h*0.18);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo( w*0.10, -h*0.10); ctx.lineTo( w*0.48,  h*0.15);
+    ctx.lineTo( w*0.32,  h*0.45); ctx.lineTo( w*0.08,  h*0.18);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Cannons
+  ctx.fillStyle = flash ? '#ffffff' : '#222233';
+  ctx.shadowBlur = 0;
+  ctx.fillRect(-w*0.38, h*0.08, w*0.11, h*0.34);
+  ctx.fillRect( w*0.27, h*0.08, w*0.11, h*0.34);
+
+  // Glowing cannon tips
+  if (!flash) {
+    ctx.shadowBlur = 12; ctx.shadowColor = def.color;
+    ctx.fillStyle  = def.color;
+    ctx.beginPath(); ctx.arc(-w*0.325, h*0.42, w*0.045, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc( w*0.325, h*0.42, w*0.045, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Pulsing core
+  if (!flash) {
+    ctx.shadowBlur  = 20 * pulse;
+    ctx.shadowColor = '#ffffff';
+    ctx.fillStyle   = `rgba(255,255,255,${pulse * 0.55})`;
+    ctx.beginPath(); ctx.arc(0, 0, w * 0.13, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle   = def.color;
+    ctx.beginPath(); ctx.arc(0, 0, w * 0.07, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Tier-2+ extra details: secondary guns
+  if (def.tier >= 2 && !flash) {
+    ctx.shadowBlur = 0; ctx.fillStyle = '#222233';
+    ctx.fillRect(-w*0.18, h*0.25, w*0.08, h*0.22);
+    ctx.fillRect( w*0.10, h*0.25, w*0.08, h*0.22);
+    ctx.shadowBlur = 8; ctx.shadowColor = def.color; ctx.fillStyle = def.color;
+    ctx.beginPath(); ctx.arc(-w*0.14, h*0.47, w*0.03, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc( w*0.14, h*0.47, w*0.03, 0, Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function renderBossUI() {
+  // Warning flash
+  if (game.bossWarning) {
+    const a = 0.55 + 0.45 * Math.sin(Date.now() / 120);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.shadowBlur  = 30; ctx.shadowColor = '#ff2200';
+    ctx.fillStyle   = '#ff4422';
+    ctx.font        = 'bold 22px Courier New';
+    ctx.textAlign   = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('⚠  BOSS APPROACHING  ⚠', canvas.width / 2, canvas.height / 2 - 14);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ff8866'; ctx.font = '14px Courier New';
+    ctx.fillText(`BRACE FOR IMPACT  ${Math.ceil(game.bossWarning.timer)}`, canvas.width / 2, canvas.height / 2 + 22);
+    ctx.restore();
+  }
+
+  // Boss HP bar
+  if (game.boss) {
+    const boss   = game.boss;
+    const barW   = canvas.width * 0.68;
+    const barH   = 11;
+    const bx     = (canvas.width - barW) / 2;
+    const by     = 34;
+    const hpPct  = Math.max(0, boss.hp / boss.maxHp);
+    const barCol = hpPct > 0.5 ? '#ff4444' : hpPct > 0.25 ? '#ff8800' : '#ff0000';
+    ctx.save();
+    // Name
+    ctx.fillStyle  = boss.def.color; ctx.shadowBlur = 8; ctx.shadowColor = boss.def.glowColor;
+    ctx.font       = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(boss.def.name, canvas.width / 2, by - 3);
+    // Bar BG
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by, barW + 2, barH + 2);
+    // Bar fill
+    ctx.fillStyle  = barCol; ctx.shadowBlur = 6; ctx.shadowColor = barCol;
+    ctx.fillRect(bx, by + 1, barW * hpPct, barH);
+    // Border
+    ctx.shadowBlur = 0; ctx.strokeStyle = barCol + '88'; ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by + 1, barW, barH);
+    // Phase pips
+    const def = boss.def;
+    for (let i = 1; i < def.phases.length; i++) {
+      const px = bx + barW * def.phases[i].hpFraction;
+      ctx.strokeStyle = '#ffffff44'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, by + 1); ctx.lineTo(px, by + barH + 1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Phase transition label
+  if (game.bossPhaseLabel && game.bossPhaseLabel.timer > 0) {
+    const alpha = Math.min(1, game.bossPhaseLabel.timer * 1.5);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur  = 24; ctx.shadowColor = '#ff0000';
+    ctx.fillStyle   = '#ff4444'; ctx.font = 'bold 20px Courier New';
+    ctx.textAlign   = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(game.bossPhaseLabel.text, canvas.width / 2, canvas.height / 2);
+    ctx.restore();
+  }
+}
+
 function renderEnemyProjectiles() {
   for (const p of game.enemyProjectiles) {
     ctx.save();
@@ -1038,6 +1435,12 @@ function startGame() {
   player.shield         = 0; player.scoreMultiplier = 1;
   player.fireTimer      = 0; player.upgrades = {};
 
+  game.boss           = null;
+  game.bossWarning    = null;
+  game.bossPhaseLabel = null;
+  game.nextBossTier   = 0;
+  MUSIC.play('early');
+
   difficulty.elapsed       = 0;
   difficulty.spawnInterval = CONFIG.difficulty.spawnInterval;
   difficulty.speedScale    = 1.0;
@@ -1047,8 +1450,10 @@ function startGame() {
 function triggerGameOver() {
   if (game.state !== 'playing') return;
   game.state = 'gameOver'; playSound('lose');
+  MUSIC.stop();
   for (const e of game.enemies) game.effects.push(createExplosion(e.x, e.y, '#ff3333'));
   game.enemies=[]; game.projectiles=[]; game.enemyProjectiles=[];
+  game.boss = null; game.bossWarning = null; game.bossPhaseLabel = null;
   if (game.score > game.highScore) {
     game.highScore = game.score; localStorage.setItem('dls_hi', game.highScore);
   }
@@ -1059,8 +1464,10 @@ function update(dt) {
   updateStars(dt);
   if (game.state === 'playing') {
     updateInput(dt); updatePlayer(dt); updateDifficulty(dt);
-    updateProjectiles(dt); updateEnemies(dt); updateEnemyProjectiles(dt); updatePickups(dt); updateEffects(dt);
-    checkProjectileEnemyCollisions(); checkPickupCollisions(); checkLoseCondition(); checkEnemyProjectilePlayer();
+    updateProjectiles(dt); updateEnemies(dt); updateEnemyProjectiles(dt); updateBoss(dt); updatePickups(dt); updateEffects(dt);
+    if (game.bossPhaseLabel) { game.bossPhaseLabel.timer -= dt; if (game.bossPhaseLabel.timer <= 0) game.bossPhaseLabel = null; }
+    checkProjectileEnemyCollisions(); checkProjectileBossCollisions(); checkPickupCollisions(); checkLoseCondition(); checkEnemyProjectilePlayer();
+    updateMusicTrack();
     cleanupEntities();
   } else if (game.state === 'gameOver') {
     updateEffects(dt);
@@ -1075,9 +1482,11 @@ function render() {
   renderPlayer();
   renderProjectiles();
   renderEnemyProjectiles();
+  renderBoss();
   renderEnemies();
   renderPickups();
   renderEffects();
+  renderBossUI();
   renderHUD();
   if (game.state === 'gameOver') renderGameOverOverlay();
   if (game.state === 'paused')   renderPauseOverlay();
