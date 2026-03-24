@@ -1577,10 +1577,12 @@ const LB = (() => {
 
   function init() {
     try {
-      if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') return;
+      if (typeof firebase === 'undefined') { console.error('LB: firebase SDK not loaded'); return; }
+      if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') { console.error('LB: no config'); return; }
       const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
       _db = app.firestore();
-    } catch(e) { console.warn('Firebase init skipped:', e.message); }
+      console.log('LB: Firestore ready');
+    } catch(e) { console.error('LB: Firebase init failed:', e.message); }
   }
 
   function escHTML(s) {
@@ -1617,7 +1619,8 @@ const LB = (() => {
   }
 
   async function submit() {
-    if (!_db || _submitted) return;
+    if (_submitted) return;
+    if (!_db) { submitStatus.textContent = 'Not connected — refresh page'; return; }
     const raw = (nameInput.value || '').trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 12);
     const name = raw || 'ACE';
     submitBtn.disabled = true;
