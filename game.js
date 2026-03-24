@@ -63,6 +63,7 @@ const game = {
 
 const player = {
   x:               CONFIG.canvas.width / 2,
+  y:               CONFIG.player.y,
   fireRate:        CONFIG.player.fireRate,
   damage:          CONFIG.player.damage,
   projectileSpeed: CONFIG.player.projectileSpeed,
@@ -102,6 +103,35 @@ window.addEventListener('keyup', e => { keys[e.code] = false; });
 canvas.addEventListener('click', e => {
   if (game.state === 'title' || game.state === 'gameOver') { startGame(); return; }
 });
+
+// ─── TOUCH ───────────────────────────────────────────────────
+const touch = { active: false, x: 0, y: 0 };
+
+function touchPos(t) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (t.clientX - r.left) * (canvas.width  / r.width),
+    y: (t.clientY - r.top)  * (canvas.height / r.height)
+  };
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (game.state === 'title' || game.state === 'gameOver') { startGame(); return; }
+  const p = touchPos(e.touches[0]);
+  touch.active = true; touch.x = p.x; touch.y = p.y;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const p = touchPos(e.touches[0]);
+  touch.x = p.x; touch.y = p.y;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (e.touches.length === 0) touch.active = false;
+}, { passive: false });
 
 // ─── 5. AUDIO ────────────────────────────────────────────────
 let _ac = null;
@@ -157,7 +187,7 @@ function createEnemy(type) {
 function createProjectile(x, offsetX = 0, damage = player.damage) {
   return {
     x: x + offsetX,
-    y: CONFIG.player.y - CONFIG.player.renderH / 2 - 2,
+    y: player.y - CONFIG.player.renderH / 2 - 2,
     speed:           player.projectileSpeed,
     damage,
     pierceRemaining: player.canPierce ? 1 : 0,
@@ -208,9 +238,29 @@ function createHitFX(x, y) {
 function updateInput(dt) {
   const spd = CONFIG.player.speed;
   const mar = CONFIG.player.margin;
+
+  // Keyboard — 4-directional
   if (keys['ArrowLeft']  || keys['KeyA']) player.x -= spd * dt;
   if (keys['ArrowRight'] || keys['KeyD']) player.x += spd * dt;
-  player.x = Math.max(mar, Math.min(canvas.width - mar, player.x));
+  if (keys['ArrowUp']    || keys['KeyW']) player.y -= spd * dt;
+  if (keys['ArrowDown']  || keys['KeyS']) player.y += spd * dt;
+
+  // Touch — player follows finger with upward offset
+  if (touch.active) {
+    const tx = touch.x;
+    const ty = touch.y - 55;   // offset ship above thumb
+    const dx = tx - player.x, dy = ty - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 1) {
+      const move = Math.min(spd * 2.2 * dt, dist);
+      player.x += (dx / dist) * move;
+      player.y += (dy / dist) * move;
+    }
+  }
+
+  // Clamp to canvas
+  player.x = Math.max(mar, Math.min(canvas.width  - mar, player.x));
+  player.y = Math.max(mar, Math.min(canvas.height - mar, player.y));
 }
 
 // ─── 8. PLAYER UPDATE ────────────────────────────────────────
@@ -358,7 +408,7 @@ function checkProjectileEnemyCollisions() {
 }
 
 function checkPickupCollisions() {
-  const px = player.x, py = CONFIG.player.y;
+  const px = player.x, py = player.y;
   const pw = CONFIG.player.width + 16, ph = CONFIG.player.height + 16; // generous hitbox
   const out = [];
   for (const p of game.pickups) {
@@ -370,7 +420,7 @@ function checkPickupCollisions() {
 }
 
 function checkLoseCondition() {
-  const px = player.x, py = CONFIG.player.y;
+  const px = player.x, py = player.y;
   const pw = CONFIG.player.width, ph = CONFIG.player.height;
 
   for (const e of game.enemies) {
@@ -456,7 +506,7 @@ function renderDangerZone() {
 // ─── 15. RENDER — PLAYER ─────────────────────────────────────
 function renderPlayer() {
   const x  = player.x;
-  const y  = CONFIG.player.y;
+  const y  = player.y;
   const rw = CONFIG.player.renderW;
   const rh = CONFIG.player.renderH;
 
@@ -822,6 +872,7 @@ function startGame() {
   game.enemies=[]; game.projectiles=[]; game.pickups=[]; game.effects=[]; game.spawnTimer=0.6;
 
   player.x            = canvas.width / 2;
+  player.y            = CONFIG.player.y;
   player.fireRate      = CONFIG.player.fireRate;
   player.damage        = CONFIG.player.damage;
   player.projectileSpeed = CONFIG.player.projectileSpeed;
