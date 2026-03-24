@@ -54,6 +54,20 @@ const ctx    = canvas.getContext('2d');
 canvas.width  = CONFIG.canvas.width;
 canvas.height = CONFIG.canvas.height;
 
+// ─── RESPONSIVE SCALING ───────────────────────────────────────
+function resizeCanvas() {
+  const scale = Math.min(
+    window.innerWidth  / canvas.width,
+    window.innerHeight / canvas.height,
+    1   // never upscale beyond native resolution
+  );
+  canvas.style.width  = Math.floor(canvas.width  * scale) + 'px';
+  canvas.style.height = Math.floor(canvas.height * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 200));
+resizeCanvas();
+
 // ─── 3. GAME STATE ───────────────────────────────────────────
 const game = {
   state:      'title',
@@ -147,6 +161,33 @@ canvas.addEventListener('touchend', e => {
   if (e.touches.length === 0) touch.active = false;
 }, { passive: false });
 
+// ─── MOBILE CONTROL BUTTONS ──────────────────────────────────
+const muteBtn  = document.getElementById('muteBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+
+muteBtn?.addEventListener('click', e => {
+  e.stopPropagation();
+  const muted = MUSIC.toggleMute();
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+pauseBtn?.addEventListener('click', e => {
+  e.stopPropagation();
+  if      (game.state === 'playing') { game.state = 'paused';  pauseBtn.textContent = '▶'; }
+  else if (game.state === 'paused')  { game.state = 'playing'; pauseBtn.textContent = '⏸'; }
+});
+
+// Auto-pause when user switches tabs
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.state === 'playing') {
+    game.state = 'paused';
+    if (pauseBtn) pauseBtn.textContent = '▶';
+  }
+});
+
+// Prevent long-press context menu on canvas
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 // ─── 5. AUDIO ────────────────────────────────────────────────
 let _ac = null;
 function getAC() {
@@ -202,6 +243,12 @@ const MUSIC = (() => {
       if (_current) { tracks[_current].pause(); tracks[_current].currentTime = 0; }
       _current = null;
     },
+    toggleMute() {
+      const muted = !tracks[Object.keys(tracks)[0]].muted;
+      Object.values(tracks).forEach(t => t.muted = muted);
+      return muted;
+    },
+    get muted() { return tracks[Object.keys(tracks)[0]]?.muted ?? false; },
     get current() { return _current; }
   };
 })();
@@ -756,6 +803,7 @@ function checkLoseCondition() {
       player.upgrades.shield = Math.max(0, (player.upgrades.shield || 1) - 1);
       game.effects.push(createExplosion(e.x, e.y, '#44ff99'));
       playSound('shield');
+      if (navigator.vibrate) navigator.vibrate(30);
       e.dead = true;
     } else {
       triggerGameOver(); return;
@@ -1452,12 +1500,16 @@ function triggerGameOver() {
   if (game.state !== 'playing') return;
   game.state = 'gameOver'; playSound('lose');
   MUSIC.stop();
+  if (navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 200]);
+  if (pauseBtn) pauseBtn.textContent = '⏸';
   for (const e of game.enemies) game.effects.push(createExplosion(e.x, e.y, '#ff3333'));
   game.enemies=[]; game.projectiles=[]; game.enemyProjectiles=[];
   game.boss = null; game.bossWarning = null; game.bossPhaseLabel = null;
   if (game.score > game.highScore) {
     game.highScore = game.score; localStorage.setItem('dls_hi', game.highScore);
   }
+  // Show leaderboard submit after short delay
+  setTimeout(() => LB.onGameOver(game.score, Math.floor(difficulty.elapsed / 20) + 1, Math.floor(game.time)), 1200);
 }
 
 // ─── 23. MAIN LOOP ───────────────────────────────────────────
@@ -1502,3 +1554,121 @@ function gameLoop(timestamp) {
 }
 
 requestAnimationFrame(gameLoop);
+
+// ─── LEADERBOARD ─────────────────────────────────────────────
+const GAME_VERSION = '1.0';
+
+const LB = (() => {
+  let _db = null, _auth = null, _user = null;
+  let _lastScore = 0, _lastWave = 0, _lastTime = 0;
+  let _submitted = false;
+
+  const overlay  = document.getElementById('lb-overlay');
+  const authRow  = document.getElementById('lb-auth-row');
+  const userRow  = document.getElementById('lb-user-row');
+  const signinBtn= document.getElementById('lb-signin');
+  const signoutBtn=document.getElementById('lb-signout');
+  const avatarImg= document.getElementById('lb-avatar');
+  const userNameEl=document.getElementById('lb-username');
+  const submitRow= document.getElementById('lb-submit-row');
+  const submitBtn= document.getElementById('lb-submit');
+  const submitStatus=document.getElementById('lb-submit-status');
+  const closeBtn = document.getElementById('lb-close');
+  const loading  = document.getElementById('lb-loading');
+  const table    = document.getElementById('lb-table');
+  const tbody    = document.getElementById('lb-body');
+
+  // Init Firebase if config is filled in
+  function init() {
+    try {
+      if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') return;
+      firebase.initializeApp(FIREBASE_CONFIG);
+      _db   = firebase.firestore();
+      _auth = firebase.auth();
+      _auth.onAuthStateChanged(user => { _user = user; updateAuthUI(); });
+    } catch(e) { console.warn('Firebase init skipped:', e.message); }
+  }
+
+  function updateAuthUI() {
+    if (!signinBtn) return;
+    if (_user) {
+      signinBtn.closest('#lb-auth-row').querySelector('#lb-signin') && (signinBtn.style.display = 'none');
+      userRow.classList.remove('hidden');
+      avatarImg.src = _user.photoURL || '';
+      userNameEl.textContent = _user.displayName || 'Player';
+      if (!_submitted && _lastScore > 0) submitRow.classList.remove('hidden');
+    } else {
+      signinBtn.style.display = '';
+      userRow.classList.add('hidden');
+      submitRow.classList.add('hidden');
+    }
+  }
+
+  async function loadScores() {
+    if (!_db) { loading.textContent = 'Sign in to see global scores'; return; }
+    loading.style.display = 'block';
+    table.classList.add('hidden');
+    try {
+      const col = `scores_v${GAME_VERSION.replace('.','_')}`;
+      const snap = await _db.collection(col).orderBy('score','desc').limit(10).get();
+      tbody.innerHTML = '';
+      snap.docs.forEach((doc, i) => {
+        const d = doc.data();
+        const tr = document.createElement('tr');
+        if (_user && d.uid === _user.uid) tr.className = 'mine';
+        tr.innerHTML = `
+          <td class="lb-rank">${i+1}</td>
+          <td>${escHTML(d.name || 'Player')}</td>
+          <td class="lb-score-val">${d.score.toLocaleString()}</td>
+          <td class="lb-wave-val">${d.wave}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (snap.empty) tbody.innerHTML = '<tr><td colspan="4" style="color:#445566;padding:10px 6px">No scores yet — be the first!</td></tr>';
+      loading.style.display = 'none';
+      table.classList.remove('hidden');
+    } catch(e) { loading.textContent = 'Could not load scores'; }
+  }
+
+  function escHTML(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  async function submit() {
+    if (!_db || !_user || _submitted) return;
+    submitBtn.disabled = true;
+    submitStatus.textContent = 'Submitting…';
+    try {
+      const col = `scores_v${GAME_VERSION.replace('.','_')}`;
+      await _db.collection(col).add({
+        uid: _user.uid, name: _user.displayName || 'Player',
+        score: _lastScore, wave: _lastWave, time: _lastTime,
+        version: GAME_VERSION, ts: Date.now()
+      });
+      _submitted = true;
+      submitStatus.textContent = '✓ Score submitted!';
+      submitBtn.style.display = 'none';
+      loadScores();
+    } catch(e) { submitStatus.textContent = 'Submit failed — try again'; submitBtn.disabled = false; }
+  }
+
+  function show() { overlay && overlay.classList.remove('hidden'); loadScores(); }
+  function hide() { overlay && overlay.classList.add('hidden'); }
+
+  // Wire up buttons
+  signinBtn ?.addEventListener('click', () => _auth?.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(()=>{}));
+  signoutBtn?.addEventListener('click', () => _auth?.signOut());
+  submitBtn ?.addEventListener('click', submit);
+  closeBtn  ?.addEventListener('click', hide);
+  overlay   ?.addEventListener('click', e => { if (e.target === overlay) hide(); });
+
+  return {
+    init,
+    onGameOver(score, wave, time) {
+      _lastScore = score; _lastWave = wave; _lastTime = time; _submitted = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.display = ''; }
+      if (submitStatus) submitStatus.textContent = '';
+      updateAuthUI();
+      show();
+    }
+  };
+})();
+
+LB.init();

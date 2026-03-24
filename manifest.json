@@ -1,0 +1,10 @@
+{
+  "name": "Scrolling Shooter",
+  "short_name": "Shooter",
+  "description": "Survive infinite waves of enemies and epic boss battles",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "portrait-primary",
+  "background_color": "#03030a",
+  "theme_color": "#03030a"
+}
