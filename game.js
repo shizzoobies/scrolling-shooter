@@ -1578,7 +1578,7 @@ const LB = (() => {
   function init() {
     try {
       if (typeof firebase === 'undefined') { console.error('LB: firebase SDK not loaded'); return; }
-      if (!window.FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') { console.error('LB: no config'); return; }
+      if (typeof FIREBASE_CONFIG === 'undefined' || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') { console.error('LB: no config'); return; }
       const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
       _db = app.firestore();
       console.log('LB: Firestore ready');
