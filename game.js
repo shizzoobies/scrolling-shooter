@@ -163,6 +163,7 @@ const player = {
   scoreMultiplier: 1,
   fireTimer:       0,
   upgrades:        {},
+  upgradeFlash:    {},
   // Visual engine flicker
   flameLen:        0
 };
@@ -474,6 +475,9 @@ function updatePlayer(dt) {
   }
   if (player.spreadTimer   > 0) player.spreadTimer   = Math.max(0, player.spreadTimer   - dt);
   if (player.explosiveTimer > 0) player.explosiveTimer = Math.max(0, player.explosiveTimer - dt);
+  for (const k of Object.keys(player.upgradeFlash)) {
+    player.upgradeFlash[k] = Math.max(0, player.upgradeFlash[k] - dt * 1.8);
+  }
 }
 
 function fire() {
@@ -932,6 +936,7 @@ function cleanupEntities() {
 // ─── 12. UPGRADES ────────────────────────────────────────────
 function applyUpgrade(type) {
   player.upgrades[type] = (player.upgrades[type] || 0) + 1;
+  player.upgradeFlash[type] = 1.0;  // trigger pill glow animation
   const s = player.upgrades[type];
   switch (type) {
     case 'fireRate':   player.fireRate      = CONFIG.player.fireRate + s * 1.0; break;
@@ -964,7 +969,7 @@ function renderBackground() {
   ctx.fillStyle = '#05050e';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (SPRITES.bgNebula) {
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.78;
     ctx.drawImage(SPRITES.bgNebula, 0, bgScrollY - canvas.height, canvas.width, canvas.height);
     ctx.drawImage(SPRITES.bgNebula, 0, bgScrollY,                 canvas.width, canvas.height);
     ctx.globalAlpha = 1;
@@ -1031,15 +1036,16 @@ function renderPlayer() {
 // ─── 16. RENDER — PROJECTILES ────────────────────────────────
 function renderProjectiles() {
   for (const p of game.projectiles) {
-    if (!drawSprite(SPRITES.bulletPlayer, p.x, p.y, p.w * 3, p.h * 2)) {
-      ctx.save();
-      ctx.shadowBlur  = 10; ctx.shadowColor = '#00ffee';
-      ctx.fillStyle   = '#00ddcc';
-      ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
-      ctx.fillStyle   = '#eeffff'; ctx.shadowBlur = 4;
-      ctx.fillRect(p.x - p.w/4, p.y - p.h/2, p.w/2, p.h * 0.55);
-      ctx.restore();
-    }
+    ctx.save();
+    // Outer glow bolt
+    ctx.shadowBlur  = 12; ctx.shadowColor = '#00ffee';
+    ctx.fillStyle   = '#00ddcc';
+    ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
+    // Bright core
+    ctx.shadowBlur  = 4; ctx.shadowColor = '#ffffff';
+    ctx.fillStyle   = '#eeffff';
+    ctx.fillRect(p.x - p.w/4, p.y - p.h/2, p.w/2, p.h * 0.6);
+    ctx.restore();
   }
 }
 
@@ -1354,21 +1360,18 @@ function renderBossUI() {
 
 function renderEnemyProjectiles() {
   for (const p of game.enemyProjectiles) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
     const angle = Math.atan2(p.vy, p.vx) - Math.PI / 2;
-    const spr   = p.boss ? SPRITES.bulletBoss : SPRITES.bulletEnemy;
-    if (spr) {
-      const sz = p.boss ? 14 : 10;
-      drawSprite(spr, p.x, p.y, sz, sz * 2.4, false, angle);
-    } else {
-      ctx.save();
-      ctx.translate(p.x, p.y); ctx.rotate(angle);
-      ctx.shadowBlur = 8; ctx.shadowColor = p.color;
-      ctx.fillStyle  = p.color;
-      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
-      ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.7;
-      ctx.fillRect(-p.w/4, -p.h/2, p.w/2, p.h*0.4);
-      ctx.restore();
-    }
+    ctx.rotate(angle);
+    ctx.shadowBlur  = p.boss ? 14 : 8;
+    ctx.shadowColor = p.color;
+    ctx.fillStyle   = p.color;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.fillStyle   = '#ffffff';
+    ctx.globalAlpha = 0.75;
+    ctx.fillRect(-p.w / 4, -p.h / 2, p.w / 2, p.h * 0.45);
+    ctx.restore();
   }
 }
 
@@ -1415,19 +1418,31 @@ function renderHUD() {
       else lbl = stk > 1 ? `${def.label}×${stk}` : def.label;
       const lw  = ctx.measureText(lbl).width + 8;
 
-      // Pill background
-      ctx.fillStyle   = def.color + '22';
-      ctx.strokeStyle = def.color + '88';
-      ctx.lineWidth   = 1;
+      // Pill background — glow when freshly picked up
+      const flash = player.upgradeFlash[key] || 0;
+      const flashPulse = flash > 0 ? 0.5 + 0.5 * Math.sin(Date.now() / 60) : 0;
+      ctx.save();
+      if (flash > 0) {
+        const sc = 1 + flash * 0.15;
+        ctx.translate(ux - 4 + lw / 2, uy + 5.5);
+        ctx.scale(sc, sc);
+        ctx.translate(-(ux - 4 + lw / 2), -(uy + 5.5));
+      }
+      ctx.fillStyle   = flash > 0 ? def.color + '55' : def.color + '22';
+      ctx.strokeStyle = flash > 0 ? def.color : def.color + '88';
+      ctx.lineWidth   = flash > 0 ? 1.5 : 1;
+      ctx.shadowBlur  = flash > 0 ? 12 + flashPulse * 10 : 0;
+      ctx.shadowColor = def.color;
       ctx.beginPath();
       ctx.roundRect(ux - 4, uy - 2, lw, 15, 4);
       ctx.fill(); ctx.stroke();
 
-      ctx.fillStyle   = def.color;
-      ctx.shadowBlur  = 5; ctx.shadowColor = def.color;
-      ctx.textAlign   = 'left';
+      ctx.fillStyle  = def.color;
+      ctx.shadowBlur = flash > 0 ? 8 + flashPulse * 8 : 5;
+      ctx.shadowColor = def.color;
+      ctx.textAlign  = 'left';
       ctx.fillText(lbl, ux, uy);
-      ctx.shadowBlur  = 0;
+      ctx.restore();
       ux += lw + 6;
     }
   }
@@ -1514,7 +1529,7 @@ function startGame() {
   player.canDoubleShot  = false; player.canSpread = false; player.canPierce = false;
   player.spreadTimer    = 0; player.explosiveTimer = 0;
   player.shield         = 0; player.scoreMultiplier = 1;
-  player.fireTimer      = 0; player.upgrades = {};
+  player.fireTimer      = 0; player.upgrades = {}; player.upgradeFlash = {};
 
   game.boss           = null;
   game.bossWarning    = null;
