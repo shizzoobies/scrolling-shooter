@@ -1,0 +1,147 @@
+{
+  "style_base": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast",
+
+  "assets": [
+
+    {
+      "id": "player_ship",
+      "file": "sprites/player.png",
+      "size": "128x128",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — player spaceship viewed from above, sleek futuristic fighter jet shape, pointing upward, glowing cyan-blue (#00ccff) hull, bright white cockpit dome center, two swept-back wings with blue thruster glow on the rear, neon cyan exhaust flames pointing downward, slight metallic sheen, transparent background, single sprite sheet frame"
+    },
+
+    {
+      "id": "enemy_basic",
+      "file": "sprites/enemy_basic.png",
+      "size": "64x64",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — enemy drone viewed from above, pointing downward toward player, boxy hostile design, glowing red hull (#cc2020), dark underbelly panel, two small side gun nubs, two small glowing red eye lights on front, menacing angular shape, transparent background, single sprite"
+    },
+
+    {
+      "id": "enemy_fast",
+      "file": "sprites/enemy_fast.png",
+      "size": "64x64",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — fast scout enemy ship viewed from above, pointing downward, sleek narrow diamond or arrowhead shape, glowing orange hull (#dd6600), small glowing amber gem core in center, thin swept wings, built for speed aesthetic, transparent background, single sprite"
+    },
+
+    {
+      "id": "enemy_tank",
+      "file": "sprites/enemy_tank.png",
+      "size": "64x64",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — heavy tank enemy ship viewed from above, pointing downward, large bulky hexagonal or rounded-square hull, glowing purple (#6611aa) armor plating, bright magenta inner ring detail (#cc44ff), small glowing purple center orb, thick armored wings, heavily fortified look, transparent background, single sprite"
+    },
+
+    {
+      "id": "enemy_elite",
+      "file": "sprites/enemy_elite.png",
+      "size": "64x64",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — elite enemy ship viewed from above, pointing downward, medium size between scout and tank, sleek but armored silhouette, deep purple-magenta hull (#880099), glowing pink-magenta accents (#ff00ee), angular aggressive design with visible weapon ports, elite insignia feel, transparent background, single sprite"
+    },
+
+    {
+      "id": "boss_sentinel",
+      "file": "sprites/boss_sentinel.png",
+      "size": "256x128",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — large boss warship SENTINEL viewed from above, pointing downward, wide imposing shape 2:1 width-to-height ratio, orange-red hull (#ff5533) with darker panels, two prominent wing-mounted cannon barrels on each side, glowing pulsing white core orb in center, jagged aggressive silhouette with 7 hull segments, massive and threatening, transparent background"
+    },
+
+    {
+      "id": "boss_decimator",
+      "file": "sprites/boss_decimator.png",
+      "size": "256x128",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — large boss warship DECIMATOR viewed from above, pointing downward, wide intimidating shape 2:1 width-to-height ratio, glowing purple hull (#cc44ff) with dark armor plates, four weapon turrets total (two main wing cannons plus two secondary guns), pulsing magenta core orb, ornate jagged silhouette larger than SENTINEL, radiating power, transparent background"
+    },
+
+    {
+      "id": "boss_annihilator",
+      "file": "sprites/boss_annihilator.png",
+      "size": "256x128",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — massive final boss warship ANNIHILATOR viewed from above, pointing downward, enormous 2:1 width-to-height ratio, hot pink hull (#ff0077) with glowing magenta-red panels, four weapon turrets, massive pulsing hot-pink core reactor, most elaborate and terrifying silhouette of all three bosses, spikes and fins along hull, transparent background"
+    },
+
+    {
+      "id": "bullet_player",
+      "file": "sprites/bullet_player.png",
+      "size": "16x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — player laser bolt, tall narrow vertical shape pointing upward, glowing cyan-teal energy bolt (#00ddcc), bright white hot core center, neon glow halo, sleek energy projectile, transparent background"
+    },
+
+    {
+      "id": "bullet_enemy",
+      "file": "sprites/bullet_enemy.png",
+      "size": "16x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — enemy laser bolt, tall narrow vertical shape pointing downward, glowing red energy bolt (#ff3333), white hot core center, aggressive neon red glow, threatening enemy projectile, transparent background"
+    },
+
+    {
+      "id": "bullet_boss",
+      "file": "sprites/bullet_boss.png",
+      "size": "32x32",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — boss energy orb projectile, small square or diamond shape, glowing bright orange-red energy ball (#ff6600), white hot core, intense neon glow ring around it, dense dangerous-looking energy projectile, transparent background"
+    },
+
+    {
+      "id": "pickup_rapid",
+      "file": "sprites/pickup_rapid.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing cyan color (#00cfff), letter R in center or lightning bolt icon, pulsing neon ring halo around it, collectible power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_power",
+      "file": "sprites/pickup_power.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing red color (#ff5555), letter P or upward arrow icon in center, pulsing neon ring halo around it, damage boost power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_spread",
+      "file": "sprites/pickup_spread.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing orange color (#ffaa00), three small arrows fanning outward or letter S in center, pulsing neon ring halo, spread shot power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_dual",
+      "file": "sprites/pickup_dual.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing yellow color (#ffe100), two parallel upward arrows or letter D in center, pulsing neon ring halo, dual fire power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_pierce",
+      "file": "sprites/pickup_pierce.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing magenta-pink color (#ff88ff), sharp arrow or spike shape through center, letter X or piercing bolt icon, pulsing neon ring halo, pierce-through power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_shield",
+      "file": "sprites/pickup_shield.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing green color (#44ff99), shield or dome icon in center, pulsing neon ring halo, defensive shield power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "pickup_explosive",
+      "file": "sprites/pickup_explosive.png",
+      "size": "48x48",
+      "prompt": "top-down 2D space shooter sprite, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — power-up pickup item, rotating diamond gem shape, glowing bright orange color (#ff6600), small explosion burst or starburst icon in center, pulsing neon ring halo, AOE explosive power-up aesthetic, transparent background"
+    },
+
+    {
+      "id": "explosion_sheet",
+      "file": "sprites/explosion_sheet.png",
+      "size": "512x64",
+      "prompt": "top-down 2D space shooter sprite sheet, pixel art style, neon glow, dark transparent background, clean edges, retro arcade aesthetic, high contrast — horizontal sprite sheet of 8 explosion animation frames, each frame 64x64 pixels, sequence from small flash to full explosion to dissipating smoke, orange-red-white color palette (#ff8800, #ff3300, #ffffff), neon glow, transparent background, evenly spaced 8 frames in a single row"
+    },
+
+    {
+      "id": "background_nebula",
+      "file": "sprites/bg_nebula.png",
+      "size": "512x768",
+      "prompt": "seamlessly tileable deep space background, pixel art style, retro arcade aesthetic — dark navy-black space (#05050e), scattered small white and light-cyan star dots of varying brightness, faint purple-blue nebula cloud wisps, no hard edges, pure background texture, very subtle, mostly dark with sparse star field, tileable vertically for scrolling space shooter game"
+    }
+
+  ]
+}
