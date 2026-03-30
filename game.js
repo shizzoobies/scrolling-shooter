@@ -121,9 +121,10 @@ function drawSprite(img, cx, cy, w, h, flash = false, angle = 0) {
   if (angle) ctx.rotate(angle);
   ctx.drawImage(img, -w / 2, -h / 2, w, h);
   if (flash) {
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillRect(-w / 2, -h / 2, w, h);
+    // Additive blend: brightens the sprite without bleeding onto surrounding pixels
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.75;
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
   }
   ctx.restore();
   return true;
@@ -363,36 +364,39 @@ const BOSS_DEFS = [
   {
     tier: 1, name: 'SENTINEL',
     spawnAt: 60, targetY: 115,
-    hp: 40, w: 88, h: 68,
-    speed: 55, color: '#ff5533', glowColor: '#ff2200',
-    scoreValue: 600,
+    hp: 160, w: 88, h: 68,
+    speed: 60, color: '#ff5533', glowColor: '#ff2200',
+    scoreValue: 3000,
     phases: [
-      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spread3',       fireRate: 0.75 },
-      { label: '— RAGE —',     hpFraction: 0.5,  pattern: 'spread5',       fireRate: 1.5,  rage: true }
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spread3',       fireRate: 1.0  },
+      { label: '— PHASE 2 —',  hpFraction: 0.6,  pattern: 'spread5',       fireRate: 1.6  },
+      { label: '— RAGE —',     hpFraction: 0.3,  pattern: 'aimed+spread3', fireRate: 2.4,  rage: true }
     ]
   },
   {
     tier: 2, name: 'DECIMATOR',
     spawnAt: 135, targetY: 125,
-    hp: 90, w: 108, h: 88,
-    speed: 72, color: '#cc44ff', glowColor: '#aa00ff',
-    scoreValue: 1800,
+    hp: 380, w: 108, h: 88,
+    speed: 80, color: '#cc44ff', glowColor: '#aa00ff',
+    scoreValue: 9000,
     phases: [
-      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'aimed+spread3', fireRate: 0.9  },
-      { label: '— PHASE 2 —',  hpFraction: 0.6,  pattern: 'ring8',         fireRate: 1.35 },
-      { label: '— RAGE —',     hpFraction: 0.3,  pattern: 'ring8+aimed',   fireRate: 2.1,  rage: true }
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'aimed+spread3', fireRate: 1.2  },
+      { label: '— PHASE 2 —',  hpFraction: 0.65, pattern: 'ring8',         fireRate: 1.8  },
+      { label: '— PHASE 3 —',  hpFraction: 0.35, pattern: 'ring8+aimed',   fireRate: 2.6  },
+      { label: '— RAGE —',     hpFraction: 0.15, pattern: 'spread5',       fireRate: 3.4,  rage: true }
     ]
   },
   {
     tier: 3, name: 'ANNIHILATOR',
     spawnAt: 225, targetY: 135,
-    hp: 180, w: 130, h: 108,
-    speed: 95, color: '#ff0077', glowColor: '#ff0044',
-    scoreValue: 5000,
+    hp: 750, w: 130, h: 108,
+    speed: 105, color: '#ff0077', glowColor: '#ff0044',
+    scoreValue: 25000,
     phases: [
-      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spiral',        fireRate: 1.8  },
-      { label: '— PHASE 2 —',  hpFraction: 0.66, pattern: 'spiral+aimed',  fireRate: 2.5  },
-      { label: '— RAGE —',     hpFraction: 0.33, pattern: 'all',           fireRate: 3.5,  rage: true }
+      { label: '— PHASE 1 —',  hpFraction: 1.1,  pattern: 'spiral',        fireRate: 2.0  },
+      { label: '— PHASE 2 —',  hpFraction: 0.7,  pattern: 'spiral+aimed',  fireRate: 2.8  },
+      { label: '— PHASE 3 —',  hpFraction: 0.4,  pattern: 'ring8+aimed',   fireRate: 3.6  },
+      { label: '— RAGE —',     hpFraction: 0.2,  pattern: 'all',           fireRate: 5.0,  rage: true }
     ]
   }
 ];
@@ -813,7 +817,7 @@ function checkProjectileEnemyCollisions() {
         playSound('hit');
         if (Math.random() < CONFIG.drops.chance) {
           const pk = createPickup(e.x, e.y);
-          if (pk) { game.pickups = [pk]; }
+          if (pk) { game.pickups.push(pk); }
         }
         // EXPLOSIVE power-up — AOE shockwave
         if (player.explosiveTimer > 0) {
