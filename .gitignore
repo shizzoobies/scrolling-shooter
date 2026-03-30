@@ -3,3 +3,10 @@ sprite_prompt_pack_v2/
 sprite_prompt_pack_v2.zip
 dual_lane_shooter_build_roadmap.zip
 .claude/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
